@@ -1,71 +1,59 @@
 from google import genai
-from src.utils.config import GEMINI_API_KEY
+from src.utils.config import GEMINI_API_KEY  # Ensure this import is here
 import json
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# PASS THE KEY HERE:
+client = genai.Client(api_key=GEMINI_API_KEY) 
 
 class TriageAgent:
     def analyze(self, symptoms, city):
-        prompt = f"""
-        You are a medical triage AI for India. 
-        Analyze these symptoms and determine the urgency and required specialty.
+        # 1. IMMEDIATE EMERGENCY OVERRIDE
+        s_low = symptoms.lower().strip()
+        emergency_keywords = ["chest pain", "heart attack", "breathing issue", "stroke"]
         
-        Symptoms: {symptoms}
-        City: {city}
-        """
+        if any(kw in s_low for kw in emergency_keywords):
+            return {
+                "urgency": "emergency",
+                "specialty": "Cardiology",
+                "reasoning": "High-risk symptoms detected. Immediate emergency routing triggered."
+            }
+
+        prompt = f"Analyze these symptoms for a patient in {city}: {symptoms}"
 
         try:
-            # Note: Using gemini-1.5-flash as it is the most stable for free-tier quotas
+            # 2. CALL AI
             response = client.models.generate_content(
-                model="gemini-1.5-flash", 
+                model="gemini-3.0-flash",
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
                     "response_schema": {
                         "type": "object",
                         "properties": {
-                            "urgency": {
-                                "type": "string",
-                                "enum": ["emergency", "urgent", "normal"]
-                            },
-                            "specialty": {
-                                "type": "string",
-                                "enum": [
-                                    "Cardiology", "Neurology", "Orthopedics",
-                                    "ENT", "Oncology", "Dermatology",
-                                    "Internal Medicine", "Pediatrics",
-                                    "Psychiatry", "Gastroenterology"
-                                ]
-                            },
-                            "reasoning": {
-                                "type": "string"
-                            }
+                            "urgency": {"type": "string", "enum": ["emergency", "urgent", "normal"]},
+                            "specialty": {"type": "string"},
+                            "reasoning": {"type": "string"}
                         },
                         "required": ["urgency", "specialty", "reasoning"]
                     }
                 }
             )
 
-            return response.parsed
+            # 3. ROBUST PARSING
+            if response.text:
+                result = json.loads(response.text)
+                return {
+                    "urgency": result.get("urgency", "normal"),
+                    "specialty": result.get("specialty", "Internal Medicine").title(),
+                    "reasoning": result.get("reasoning", "Analysis complete.")
+                }
+
+            raise ValueError("Empty response")
 
         except Exception as e:
-            print("--- Gemini API Error ---")
-            print(str(e))
-            
-            # FALLBACK LOGIC: 
-            # If the API hits a quota limit (429) or fails, don't crash.
-            # Return a "General Medicine" assessment so the user can still see doctors.
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print("Quota reached. Providing fallback response.")
-                return {
-                    "urgency": "normal",
-                    "specialty": "Internal Medicine",
-                    "reasoning": "The AI service is currently at capacity. Please consult a General Physician (Internal Medicine) for an initial screening."
-                }
-            
-            # If it's a different error, we still provide a safe default
+            print(f"DEBUG: AI Error - {e}")
             return {
                 "urgency": "normal",
                 "specialty": "Internal Medicine",
-                "reasoning": "System is undergoing maintenance. For safety, we recommend starting with Internal Medicine."
+                "reasoning": "System is optimizing. Please consult general medicine."
             }

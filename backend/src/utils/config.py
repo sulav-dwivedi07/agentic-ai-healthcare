@@ -19,4 +19,8 @@ DATA_PATH = os.path.join(
     "indian_healthcare_master.csv"
 )
 
-MODEL_PRIORITY = []
+MODEL_PRIORITY = [
+    "gemini-3-flash",      # Newest, likely has 20/20 requests left
+    "gemini-1.5-flash-8b", # Faster, lighter, often has its own separate quota
+    "gemini-2.5-flash-lite" # Another efficient alternative
+]
